@@ -7,6 +7,9 @@ from sqlalchemy.ext.asyncio import (create_async_engine,
                                     async_sessionmaker)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from datetime import datetime, date
+import pytz
+
+SWE_TIME = pytz.timezone("Europe/Stockholm")
 
 load_dotenv()
 
@@ -137,6 +140,10 @@ def format(minutes):
     return f"{hours} h {minutes} min"
 
 
+def get_current_hour() -> int:
+    return int(datetime.now(SWE_TIME).strftime("%H"))
+
+
 @tasks.loop(minutes=60)
 async def time_reset():
     guild = bot.get_guild(GUILD_ID)
@@ -144,7 +151,7 @@ async def time_reset():
     db = await gen_db()
     db_members = (await db.execute(select(User))).scalars().all()
     today = date.today().weekday()
-    if int(datetime.now().strftime("%H")) == day_reset_time:
+    if get_current_hour() == day_reset_time:
         for db_member in db_members:
             if db_member.day_time < 90 and today < 5:
                 db_member.missed_days += 1
@@ -162,7 +169,7 @@ async def time_reset():
 
 @tasks.loop(minutes=1)
 async def check_time():
-    if int(datetime.now().strftime("%H")) < 5:
+    if get_current_hour() < 5:
         return
     db = await gen_db()
     channel = bot.get_channel(VOICE_CHANNEL)
