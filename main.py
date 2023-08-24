@@ -15,6 +15,10 @@ VOICE_CHANNEL = int(os.getenv('voiceChannel'))
 GUILD_ID = int(os.getenv('guildId'))
 TEXT_CHANNEL = int(os.getenv('textChannel'))
 
+print(VOICE_CHANNEL)
+print(GUILD_ID)
+print(TEXT_CHANNEL)
+
 day_reset_time = 0
 week_reset_day = 0
 intents = discord.Intents(messages=True,
