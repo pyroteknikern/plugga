@@ -11,10 +11,14 @@ from datetime import datetime, date
 load_dotenv()
 
 token = os.getenv('discordToken')
+'''
 VOICE_CHANNEL = int(os.getenv('voiceChannel'))
 GUILD_ID = int(os.getenv('guildId'))
 TEXT_CHANNEL = int(os.getenv('textChannel'))
-
+'''
+VOICE_CHANNEL = 1137055625973608538
+GUILD_ID = 1137055625042481213
+TEXT_CHANNEL = 1143592135111741450
 print(VOICE_CHANNEL)
 print(GUILD_ID)
 print(TEXT_CHANNEL)
