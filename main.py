@@ -17,6 +17,8 @@ VOICE_CHANNEL = 1137055625973608538
 print(VOICE_CHANNEL)
 GUILD_ID = 1137055625042481213
 TEXT_CHANNEL = 1143592135111741450
+day_reset_time = 0
+week_reset_day = 0
 intents = discord.Intents(messages=True,
                           guilds=True,
                           members=True,
@@ -44,14 +46,11 @@ class User(Base):
     missed_days: Mapped[int]
 
 
-async def get_db():
+async def gen_db():
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     db = SessionLocal()
-    try:
-        yield db
-    finally:
-        await db.close()
+    return db
 
 
 @bot.command(name="test")
@@ -65,34 +64,16 @@ async def test(ctx):
     await db.close()
 
 
-def get_index(member: str, members: list):
-    for i, mem in enumerate(members):
-        if mem.username == member:
-            return i
-
-
-@tasks.loop(minutes=1)
-async def check_time():
-    if int(datetime.now().strftime("%H")) < 5:
-        return
-
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    db = SessionLocal()
-    db_members = (await db.execute(select(User))).scalars().all()
-
-    channel = bot.get_channel(VOICE_CHANNEL)
-    vc_members = channel.members
-    for vc_member in vc_members:
-        index = get_index(vc_member.name, db_members)
-        db_members[index].day_time += 1
-        db_members[index].week_time += 1
-        db_members[index].total_time += 1
-    await db.commit()
+@bot.command(name="test2")
+async def test2(ctx):
+    db = await gen_db()
+    users = (await db.execute(select(User))).scalars().all()
+    for j, i in enumerate(users):
+        print(i.username)
     await db.close()
 
 
-async def get_user(user: str, db):
+async def get_user_by_username(user: str, db):
     db_members = (await db.execute(select(User))).scalars().all()
     for db_user in db_members:
         if db_user.username == user:
@@ -103,28 +84,18 @@ async def get_user(user: str, db):
 async def create_members():
     guild = bot.get_guild(GUILD_ID)
     memberList = guild.members
-
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-
-    db = SessionLocal()
-
+    db = await gen_db()
     for i, member in enumerate(memberList):
         if member.bot:
             continue
-        if await get_user(member.name, db) is None:
-            try:
-                new_user = User(username=member.name,
-                                total_time=0,
-                                week_time=0,
-                                day_time=0,
-                                missed_days=0)
-                db.add(new_user)
-                await db.commit()
-            except:
-                pass
-            continue
-
+        if await get_user_by_username(member.name, db) is None:
+            new_user = User(username=member.name,
+                            total_time=0,
+                            week_time=0,
+                            day_time=0,
+                            missed_days=0)
+            db.add(new_user)
+            await db.commit()
     await db.close()
 
 
@@ -133,24 +104,30 @@ async def display_stat(ctx):
     await send_stat([ctx.author], ctx)
 
 
-async def send_stat(members, ctx=None):
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    db = SessionLocal()
+async def send_stat(server_members, ctx=None):
+    db = await gen_db()
     message = ""
-    for member in members:
-        user = await get_user(member.name, db)
-        channel = bot.get_channel(TEXT_CHANNEL)
-        try:
-            message += f"{member.mention}\nTotal: {format(user.total_time)}\nToday: {format(user.day_time)}\nThis week: {format(user.week_time)}\nFails: {user.missed_days}\nSkuld: {user.missed_days*50}"
-        except:
-            pass
+    channel = bot.get_channel(TEXT_CHANNEL)
+    for server_member in server_members:
+        if server_member.bot:
+            continue
+        db_member = await get_user_by_username(server_member.name, db)
+        message += f"{server_member.mention}\n"
+        if db_member is None:
+            message += "your name is not registerd\n"
+            continue
+        if ctx is not None:
+            message += f"Today: {format(db_member.day_time)}\n"
+        message += f"Total: {format(db_member.total_time)}\n"
+        message += f"This week: {format(db_member.week_time)}\n"
+        message += f"Fails: {db_member.missed_days}\n"
+        message += f"Skuld: {db_member.missed_days*50}\n"
+    await db.close()
     if ctx is not None:
         await ctx.send(message)
     else:
         await channel.purge(limit=2)
         await channel.send(message)
-    await db.close()
 
 
 def format(minutes):
@@ -161,25 +138,40 @@ def format(minutes):
 @tasks.loop(minutes=60)
 async def time_reset():
     guild = bot.get_guild(GUILD_ID)
-    memberList = guild.members
-
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    db = SessionLocal()
+    server_members = guild.members
+    db = await gen_db()
     db_members = (await db.execute(select(User))).scalars().all()
     today = date.today().weekday()
-    if int(datetime.now().strftime("%H")) == 0:
-        for member in db_members:
-            if member.day_time < 90 and today < 5:
-                member.missed_days += 1
-            member.day_time = 0
-        if today == 0:
-            await send_stat(memberList)
+    if int(datetime.now().strftime("%H")) == day_reset_time:
+        for db_member in db_members:
+            if db_member.day_time < 90 and today < 5:
+                db_member.missed_days += 1
+            db_member.day_time = 0
+        if today == week_reset_day:
+            await send_stat(server_members)
             await create_members()
-            for member in db_members:
-                if member.week_time < 450:
-                    member.missed_days += 1
-                member.week_time = 0
+            for db_member in db_members:
+                if db_member.week_time < 450:
+                    db_member.missed_days += 1
+                db_member.week_time = 0
+    await db.commit()
+    await db.close()
+
+
+@tasks.loop(minutes=1)
+async def check_time():
+    if int(datetime.now().strftime("%H")) < 5:
+        return
+    db = await gen_db()
+    channel = bot.get_channel(VOICE_CHANNEL)
+    vc_members = channel.members
+    for vc_member in vc_members:
+        db_user = await get_user_by_username(vc_member.name, db)
+        if db_user is None:
+            continue
+        db_user.day_time += 1
+        db_user.week_time += 1
+        db_user.total_time += 1
     await db.commit()
     await db.close()
 
