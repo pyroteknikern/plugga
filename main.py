@@ -2,21 +2,19 @@ import os
 import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
-
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import (create_async_engine,
                                     async_sessionmaker)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
 from datetime import datetime, date
 
 load_dotenv()
+
 token = os.getenv('discordToken')
-print(token)
-VOICE_CHANNEL = 1137055625973608538
-print(VOICE_CHANNEL)
-GUILD_ID = 1137055625042481213
-TEXT_CHANNEL = 1143592135111741450
+VOICE_CHANNEL = int(os.getenv('voiceChannel'))
+GUILD_ID = int(os.getenv('guildId'))
+TEXT_CHANNEL = int(os.getenv('textChannel'))
+
 day_reset_time = 0
 week_reset_day = 0
 intents = discord.Intents(messages=True,
