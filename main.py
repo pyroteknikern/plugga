@@ -6,7 +6,7 @@ from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import (create_async_engine,
                                     async_sessionmaker)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import pytz
 
 SWE_TIME = pytz.timezone("Europe/Stockholm")
@@ -49,6 +49,16 @@ class User(Base):
     week_time: Mapped[int]
     day_time: Mapped[int]
     missed_days: Mapped[int]
+    challange_accepted: Mapped[bool]
+    period_failed: Mapped[int]
+
+
+class Date(Base):
+    __tablename__ = "dates"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    start_date: Mapped[str]
+    end_date: Mapped[str]
+    period: Mapped[int]
 
 
 async def gen_db():
@@ -78,6 +88,117 @@ async def test2(ctx):
     await db.close()
 
 
+@bot.command(name="accept-challange")
+async def accept_challange(ctx):
+    db = await gen_db()
+    db_member = await get_user_by_username(ctx.author.name, db)
+    cp = current_period(db)
+    if db_member.period_failed == cp or db_member.period_failed == cp+1:
+        await db.close()
+        return
+    db_member.challange_accepted = True
+    await db.commit()
+    await db.close()
+
+
+@bot.command(name="quit-challange")
+async def quit_challange(ctx):
+    db = await gen_db()
+    cp = current_period(db)
+    if not cp:
+        await db.close()
+        await ctx.send("there is not currently an active period")
+        return
+    db_member = await get_user_by_username(ctx.author.name, db)
+    db_member.challange_accepted = False
+    db_member.period_failed = cp
+    await db.commit()
+    await db.close()
+
+
+async def current_period(db):
+    format = "%d-%m-%Y"
+    db_periods = (await db.execute(select(Date))).scalars().all()
+    today = datetime.today().strftime(format)
+    today = datetime.strptime(today, format)
+    for db_period in db_periods:
+        db_end = datetime.strptime(db_period.end_date, format)
+        db_start = datetime.strptime(db_period.start_date, format)
+        if today >= db_start and today < db_end:
+            return db_period.period
+    return False
+
+
+@bot.command(name="mytime")
+async def display_stat(ctx):
+    await send_stat([ctx.author], ctx)
+
+
+@bot.command(name="period")
+async def set_test_date(ctx, date):
+    if ctx.channel.id != int(os.getenv("modChannel")):
+        return
+    a = date.split("-")
+    start_date_list = a[0].split(",")
+    end_date_list = a[1].split(",")
+    period = int(a[2])
+    start_date = f"{str(start_date_list[0])}-"
+    start_date += f"{str(start_date_list[1])}-"
+    start_date += f"{str(start_date_list[2])}"
+
+    end_date = f"{str(end_date_list[0])}-"
+    end_date += f"{str(end_date_list[1])}-"
+    end_date += f"{str(end_date_list[2])}"
+
+    format = "%d-%m-%Y"
+    res = True
+
+    try:
+        res = bool(datetime.strptime(start_date, format))
+    except ValueError:
+        res = False
+    if not res:
+        await ctx.send("this is not the correct format")
+        return
+    today = datetime.today().strftime(format)
+    today = datetime.strptime(today, format)
+    if today > datetime.strptime(start_date,
+                                 format) or datetime.strptime(start_date,
+                                                              format) >= datetime.strptime(end_date,
+                                                                                           format):
+        await ctx.send("this is not a valid period")
+        return
+
+    db = await gen_db()
+    if await date_overlaps(start_date, end_date, db, ctx, format):
+        await db.close()
+        return
+    new_start_date = Date(start_date=start_date, end_date=end_date, period=period)
+    db.add(new_start_date)
+    await db.commit()
+    await db.close()
+    await ctx.send("period was added")
+
+
+async def date_overlaps(start_date, end_date, db, ctx, format):
+    db_dates = (await db.execute(select(Date))).scalars().all()
+    start_date = datetime.strptime(start_date, format)
+    end_date = datetime.strptime(end_date, format)
+    for i, db_period in enumerate(db_dates):
+        db_end = datetime.strptime(db_period.end_date, format)
+        db_start = datetime.strptime(db_period.start_date, format)
+        if start_date <= db_end and start_date >= db_start:
+            await ctx.send(f"{start_date} cannot be within period: {db_period.period}")
+            return True
+        if end_date <= db_end and end_date >= db_start:
+            await ctx.send(f"{end_date} cannot be within period: {db_period.period}")
+            return True
+        if end_date >= db_end and start_date <= db_start:
+            await ctx.send(f"bloced by period: {db_period.period}")
+            return True
+    return False
+
+
 async def get_user_by_username(user: str, db):
     db_members = (await db.execute(select(User))).scalars().all()
     for db_user in db_members:
@@ -104,11 +225,6 @@ async def create_members():
     await db.close()
 
 
-@bot.command(name="mytime")
-async def display_stat(ctx):
-    await send_stat([ctx.author], ctx)
-
-
 async def send_stat(server_members, ctx=None):
     db = await gen_db()
     message = ""
@@ -122,11 +238,11 @@ async def send_stat(server_members, ctx=None):
             message += "your name is not registerd\n"
             continue
         if ctx is not None:
-            message += f"Today: {format(db_member.day_time)}\n"
-        message += f"Total: {format(db_member.total_time)}\n"
-        message += f"This week: {format(db_member.week_time)}\n"
-        message += f"Fails: {db_member.missed_days}\n"
-        message += f"Skuld: {db_member.missed_days*50}\n"
+            message += f"Today: {format_time(db_member.day_time)}\n"
+        message += f"This week: {format_time(db_member.week_time)}\n"
+        message += f"Total: {format_time(db_member.total_time)}\n"
+        message += f"Missed days: {db_member.missed_days}\n"
+        message += f"Dept: {db_member.missed_days*50}\n"
     await db.close()
     if ctx is not None:
         await ctx.send(message)
@@ -135,13 +251,27 @@ async def send_stat(server_members, ctx=None):
         await channel.send(message)
 
 
-def format(minutes):
+def format_time(minutes):
     hours, minutes = divmod(minutes, 60)
     return f"{hours} h {minutes} min"
 
 
 def get_current_hour() -> int:
     return int(datetime.now(SWE_TIME).strftime("%H"))
+
+
+async def count_missed_days(db) -> bool:
+    format = "%d-%m-%Y"
+    db_periods = (await db.execute(select(Date))).scalars().all()
+    today = datetime.today().strftime(format)
+    today = datetime.strptime(today, format)
+    for db_period in db_periods:
+        db_end = datetime.strptime(db_period.end_date, format)
+        db_start = datetime.strptime(db_period.start_date, format)
+        stop_date = db_end - timedelta(days=14)
+        if today >= db_start and today < stop_date:
+            return True
+    return False
 
 
 @tasks.loop(minutes=60)
@@ -151,16 +281,18 @@ async def time_reset():
     db = await gen_db()
     db_members = (await db.execute(select(User))).scalars().all()
     today = date.today().weekday()
+
     if get_current_hour() == day_reset_time:
         for db_member in db_members:
-            if db_member.day_time < 90 and today < 5:
+            count_days = await count_missed_days(db)
+            if db_member.day_time < 90 and today < 5 and count_days:
                 db_member.missed_days += 1
             db_member.day_time = 0
         if today == week_reset_day:
             await send_stat(server_members)
             await create_members()
             for db_member in db_members:
-                if db_member.week_time < 450:
+                if db_member.week_time < 450 and count_days:
                     db_member.missed_days += 1
                 db_member.week_time = 0
     await db.commit()
