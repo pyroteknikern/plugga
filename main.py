@@ -5,9 +5,10 @@ from dotenv import load_dotenv
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import (create_async_engine,
                                     async_sessionmaker)
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from datetime import datetime, date, timedelta
 import pytz
+
+from models import Base, User, Date
 
 SWE_TIME = pytz.timezone("Europe/Stockholm")
 
@@ -24,6 +25,7 @@ print(TEXT_CHANNEL)
 
 day_reset_time = 0
 week_reset_day = 0
+format = "%d-%m-%Y"
 intents = discord.Intents(messages=True,
                           guilds=True,
                           members=True,
@@ -35,30 +37,6 @@ bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
 engine = create_async_engine("sqlite+aiosqlite:///db.sqlite3",
                              connect_args={"check_same_thread": False})
 SessionLocal = async_sessionmaker(engine)
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-class User(Base):
-    __tablename__ = "users"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(unique=True)
-    total_time: Mapped[int]
-    week_time: Mapped[int]
-    day_time: Mapped[int]
-    missed_days: Mapped[int]
-    challange_accepted: Mapped[bool]
-    period_failed: Mapped[int]
-
-
-class Date(Base):
-    __tablename__ = "dates"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    start_date: Mapped[str]
-    end_date: Mapped[str]
-    period: Mapped[int]
 
 
 async def gen_db():
@@ -91,12 +69,15 @@ async def test2(ctx):
 @bot.command(name="accept-challange")
 async def accept_challange(ctx):
     db = await gen_db()
+    date_period = get_date_by_period(db)
+    
     db_member = await get_user_by_username(ctx.author.name, db)
-    cp = current_period(db)
-    if db_member.period_failed == cp or db_member.period_failed == cp+1:
+    if db_member.period_failed != 0:
         await db.close()
+        await ctx.send('Error: 69, lol get blocked')
         return
     db_member.challange_accepted = True
+    await ctx.send('Sucefully joined the chllange, best of luck!')
     await db.commit()
     await db.close()
 
@@ -104,20 +85,21 @@ async def accept_challange(ctx):
 @bot.command(name="quit-challange")
 async def quit_challange(ctx):
     db = await gen_db()
-    cp = current_period(db)
-    if not cp:
+    cp = await current_period(db)
+    db_periods = (await db.execute(select(Date))).scalars().all()
+    db_member = await get_user_by_username(ctx.author.name, db)
+    if not cp and db_member.period_failed != 0:
         await db.close()
         await ctx.send("there is not currently an active period")
         return
-    db_member = await get_user_by_username(ctx.author.name, db)
     db_member.challange_accepted = False
-    db_member.period_failed = cp
+    db_member.period_failed = 2
+    await ctx.send("I KNEW IT! \n jk, this is pre-written - still sad that u quit")
     await db.commit()
     await db.close()
 
 
 async def current_period(db):
-    format = "%d-%m-%Y"
     db_periods = (await db.execute(select(Date))).scalars().all()
     today = datetime.today().strftime(format)
     today = datetime.strptime(today, format)
@@ -128,6 +110,11 @@ async def current_period(db):
             return db_period.period
     return False
 
+async def get_date_by_period(db, period):
+    db_periods = (await db.execute(select(Date))).scalars().all()
+    for db_period in db_periods:
+        if db_period.period == period:
+            return db_period
 
 @bot.command(name="mytime")
 async def display_stat(ctx):
@@ -179,6 +166,23 @@ async def set_test_date(ctx, date):
     await db.close()
     await ctx.send("period was added")
 
+async def reset_user(db, username):
+    db_member = await get_user_by_username(username, db)
+    db_member.total_time = 0
+    db_member.week_time = 0
+    db_member.day_time = 0
+    db_member.missed_days = 0
+    db_member.challange_accepted = False
+
+
+async def delete_prev_period_data(db):
+    db_dates = (await db.execute(select(Date))).scalars().all()
+    db_members = (await db.execute(select(User))).scalars().all()
+    for db_user in db_members:
+        reset_user(db, db_user.name)
+    await db.delete(db_dates[0])
+    await db.commit()
+    await db.close()
 
 async def date_overlaps(start_date, end_date, db, ctx, format):
     db_dates = (await db.execute(select(Date))).scalars().all()
@@ -219,7 +223,9 @@ async def create_members():
                             total_time=0,
                             week_time=0,
                             day_time=0,
-                            missed_days=0)
+                            missed_days=0,
+                            challange_accepted=False,
+                            period_failed=0)
             db.add(new_user)
             await db.commit()
     await db.close()
@@ -261,7 +267,6 @@ def get_current_hour() -> int:
 
 
 async def count_missed_days(db) -> bool:
-    format = "%d-%m-%Y"
     db_periods = (await db.execute(select(Date))).scalars().all()
     today = datetime.today().strftime(format)
     today = datetime.strptime(today, format)
@@ -280,19 +285,31 @@ async def time_reset():
     server_members = guild.members
     db = await gen_db()
     db_members = (await db.execute(select(User))).scalars().all()
-    today = date.today().weekday()
+    today_num = date.today().weekday()
+    today = datetime.today().strftime(format)
+    today = datetime.strptime(today, format)
+    
 
     if get_current_hour() == day_reset_time:
+        cp = current_period(db)
+        cp_period = await get_date_by_period(db, cp)
+        if cp_period is not None:
+            cp_period_end = datetime.strptime(cp_period.end_date, format)
+            if cp_period_end == today:
+                for db_member in db_members:
+                    if db_member.period_failed != 0:
+                        db_member.period_failed -= 1
+                delete_prev_period_data(db)
         for db_member in db_members:
             count_days = await count_missed_days(db)
-            if db_member.day_time < 90 and today < 5 and count_days:
+            if db_member.day_time < 90 and today_num < 5 and count_days and db_member.period_failed == 0:
                 db_member.missed_days += 1
             db_member.day_time = 0
-        if today == week_reset_day:
+        if today_num == week_reset_day:
             await send_stat(server_members)
             await create_members()
             for db_member in db_members:
-                if db_member.week_time < 450 and count_days:
+                if db_member.week_time < 450 and count_days and db_member.period_failed == 0:
                     db_member.missed_days += 1
                 db_member.week_time = 0
     await db.commit()
