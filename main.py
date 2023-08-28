@@ -1,120 +1,18 @@
 import os
-import discord
-from discord.ext import commands, tasks
-from dotenv import load_dotenv
 from sqlalchemy.future import select
-from sqlalchemy.ext.asyncio import (create_async_engine,
-                                    async_sessionmaker)
-from datetime import datetime, date, timedelta
-import pytz
+from datetime import datetime, date
 
-from models import Base, User, Date
+from models import User, Date
 
-SWE_TIME = pytz.timezone("Europe/Stockholm")
+from discord.ext import tasks
 
-load_dotenv()
+from create_bot import create_bot
+from custom_funcs import send_stat, gen_db, date_overlaps, get_date_by_period, get_user_by_username, current_period, get_current_hour, delete_prev_period_data, count_missed_days
 
-token = os.getenv('discordToken')
-VOICE_CHANNEL = int(os.getenv('voiceChannel'))
-GUILD_ID = int(os.getenv('guildId'))
-TEXT_CHANNEL = int(os.getenv('textChannel'))
+from global_variables import GUILD_ID, VOICE_CHANNEL, token, week_reset_day, day_reset_time, format
 
-print(VOICE_CHANNEL)
-print(GUILD_ID)
-print(TEXT_CHANNEL)
+bot = create_bot()
 
-day_reset_time = 0
-week_reset_day = 0
-format = "%d-%m-%Y"
-intents = discord.Intents(messages=True,
-                          guilds=True,
-                          members=True,
-                          message_content=True,
-                          presences=True)
-bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
-
-
-engine = create_async_engine("sqlite+aiosqlite:///db.sqlite3",
-                             connect_args={"check_same_thread": False})
-SessionLocal = async_sessionmaker(engine)
-
-
-async def gen_db():
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    db = SessionLocal()
-    return db
-
-
-@bot.command(name="test")
-async def test(ctx):
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    db = SessionLocal()
-    users = (await db.execute(select(User))).scalars().all()
-    for j, i in enumerate(users):
-        print(i.username)
-    await db.close()
-
-
-@bot.command(name="test2")
-async def test2(ctx):
-    db = await gen_db()
-    users = (await db.execute(select(User))).scalars().all()
-    for j, i in enumerate(users):
-        print(i.username)
-    await db.close()
-
-
-@bot.command(name="accept-challange")
-async def accept_challange(ctx):
-    db = await gen_db()
-    date_period = get_date_by_period(db)
-    
-    db_member = await get_user_by_username(ctx.author.name, db)
-    if db_member.period_failed != 0:
-        await db.close()
-        await ctx.send('Error: 69, lol get blocked')
-        return
-    db_member.challange_accepted = True
-    await ctx.send('Sucefully joined the chllange, best of luck!')
-    await db.commit()
-    await db.close()
-
-
-@bot.command(name="quit-challange")
-async def quit_challange(ctx):
-    db = await gen_db()
-    cp = await current_period(db)
-    db_periods = (await db.execute(select(Date))).scalars().all()
-    db_member = await get_user_by_username(ctx.author.name, db)
-    if not cp and db_member.period_failed != 0:
-        await db.close()
-        await ctx.send("there is not currently an active period")
-        return
-    db_member.challange_accepted = False
-    db_member.period_failed = 2
-    await ctx.send("I KNEW IT! \n jk, this is pre-written - still sad that u quit")
-    await db.commit()
-    await db.close()
-
-
-async def current_period(db):
-    db_periods = (await db.execute(select(Date))).scalars().all()
-    today = datetime.today().strftime(format)
-    today = datetime.strptime(today, format)
-    for db_period in db_periods:
-        db_end = datetime.strptime(db_period.end_date, format)
-        db_start = datetime.strptime(db_period.start_date, format)
-        if today >= db_start and today < db_end:
-            return db_period.period
-    return False
-
-async def get_date_by_period(db, period):
-    db_periods = (await db.execute(select(Date))).scalars().all()
-    for db_period in db_periods:
-        if db_period.period == period:
-            return db_period
 
 @bot.command(name="mytime")
 async def display_stat(ctx):
@@ -166,48 +64,56 @@ async def set_test_date(ctx, date):
     await db.close()
     await ctx.send("period was added")
 
-async def reset_user(db, username):
-    db_member = await get_user_by_username(username, db)
-    db_member.total_time = 0
-    db_member.week_time = 0
-    db_member.day_time = 0
-    db_member.missed_days = 0
-    db_member.challange_accepted = False
+
+@bot.command(name="test")
+async def test(ctx):
+    db = gen_db()
+    users = (await db.execute(select(User))).scalars().all()
+    for j, i in enumerate(users):
+        print(i.username)
+    await db.close()
 
 
-async def delete_prev_period_data(db):
-    db_dates = (await db.execute(select(Date))).scalars().all()
-    db_members = (await db.execute(select(User))).scalars().all()
-    for db_user in db_members:
-        reset_user(db, db_user.name)
-    await db.delete(db_dates[0])
+@bot.command(name="test2")
+async def test2(ctx):
+    db = await gen_db()
+    users = (await db.execute(select(User))).scalars().all()
+    for j, i in enumerate(users):
+        print(i.username)
+    await db.close()
+
+
+@bot.command(name="accept-challange")
+async def accept_challange(ctx):
+    db = await gen_db()
+    date_period = get_date_by_period(db)
+    
+    db_member = await get_user_by_username(ctx.author.name, db)
+    if db_member.period_failed != 0:
+        await db.close()
+        await ctx.send('Error: 69, lol get blocked')
+        return
+    db_member.challange_accepted = True
+    await ctx.send('Sucefully joined the chllange, best of luck!')
     await db.commit()
     await db.close()
 
-async def date_overlaps(start_date, end_date, db, ctx, format):
-    db_dates = (await db.execute(select(Date))).scalars().all()
-    start_date = datetime.strptime(start_date, format)
-    end_date = datetime.strptime(end_date, format)
-    for i, db_period in enumerate(db_dates):
-        db_end = datetime.strptime(db_period.end_date, format)
-        db_start = datetime.strptime(db_period.start_date, format)
-        if start_date <= db_end and start_date >= db_start:
-            await ctx.send(f"{start_date} cannot be within period: {db_period.period}")
-            return True
-        if end_date <= db_end and end_date >= db_start:
-            await ctx.send(f"{end_date} cannot be within period: {db_period.period}")
-            return True
-        if end_date >= db_end and start_date <= db_start:
-            await ctx.send(f"bloced by period: {db_period.period}")
-            return True
-    return False
 
-
-async def get_user_by_username(user: str, db):
-    db_members = (await db.execute(select(User))).scalars().all()
-    for db_user in db_members:
-        if db_user.username == user:
-            return db_user
+@bot.command(name="quit-challange")
+async def quit_challange(ctx):
+    db = await gen_db()
+    cp = await current_period(db)
+    db_periods = (await db.execute(select(Date))).scalars().all()
+    db_member = await get_user_by_username(ctx.author.name, db)
+    if not cp and db_member.period_failed != 0:
+        await db.close()
+        await ctx.send("there is not currently an active period")
+        return
+    db_member.challange_accepted = False
+    db_member.period_failed = 2
+    await ctx.send("I KNEW IT! \n jk, this is pre-written - still sad that u quit")
+    await db.commit()
+    await db.close()
 
 
 @bot.event
@@ -231,54 +137,6 @@ async def create_members():
     await db.close()
 
 
-async def send_stat(server_members, ctx=None):
-    db = await gen_db()
-    message = ""
-    channel = bot.get_channel(TEXT_CHANNEL)
-    for server_member in server_members:
-        if server_member.bot:
-            continue
-        db_member = await get_user_by_username(server_member.name, db)
-        message += f"{server_member.mention}\n"
-        if db_member is None:
-            message += "your name is not registerd\n"
-            continue
-        if ctx is not None:
-            message += f"Today: {format_time(db_member.day_time)}\n"
-        message += f"This week: {format_time(db_member.week_time)}\n"
-        message += f"Total: {format_time(db_member.total_time)}\n"
-        message += f"Missed days: {db_member.missed_days}\n"
-        message += f"Dept: {db_member.missed_days*50}\n"
-    await db.close()
-    if ctx is not None:
-        await ctx.send(message)
-    else:
-        await channel.purge(limit=2)
-        await channel.send(message)
-
-
-def format_time(minutes):
-    hours, minutes = divmod(minutes, 60)
-    return f"{hours} h {minutes} min"
-
-
-def get_current_hour() -> int:
-    return int(datetime.now(SWE_TIME).strftime("%H"))
-
-
-async def count_missed_days(db) -> bool:
-    db_periods = (await db.execute(select(Date))).scalars().all()
-    today = datetime.today().strftime(format)
-    today = datetime.strptime(today, format)
-    for db_period in db_periods:
-        db_end = datetime.strptime(db_period.end_date, format)
-        db_start = datetime.strptime(db_period.start_date, format)
-        stop_date = db_end - timedelta(days=14)
-        if today >= db_start and today < stop_date:
-            return True
-    return False
-
-
 @tasks.loop(minutes=60)
 async def time_reset():
     guild = bot.get_guild(GUILD_ID)
@@ -288,8 +146,6 @@ async def time_reset():
     today_num = date.today().weekday()
     today = datetime.today().strftime(format)
     today = datetime.strptime(today, format)
-    
-
     if get_current_hour() == day_reset_time:
         cp = current_period(db)
         cp_period = await get_date_by_period(db, cp)
