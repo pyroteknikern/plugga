@@ -13,12 +13,14 @@ from global_variables import GUILD_ID, VOICE_CHANNEL, token, week_reset_day, day
 
 bot = create_bot()
 
+
 @bot.command(name="checkperiod")
 async def display_period(ctx):
     db = await gen_db()
     message = await make_msg_times(db)
     await ctx.send(message)
     await db.close()
+
 
 @bot.command(name="mytime")
 async def display_stat(ctx):
@@ -90,7 +92,6 @@ async def test2(ctx):
 @bot.command(name="accept-challange")
 async def accept_challange(ctx):
     db = await gen_db()
-    
     cp = await current_period(db)
     cp_period = await get_date_by_period(db, cp)
     cp_period_start = datetime.strptime(cp_period.start_date, format)
@@ -98,7 +99,6 @@ async def accept_challange(ctx):
     cp_middle_date = cp_period_start + (cp_period_start - cp_period_end)/2
     today = datetime.today().strftime(format)
     today = datetime.strptime(today, format)
-    
     db_member = await get_user_by_username(ctx.author.name, db)
     if today >= cp_middle_date:
         await db.close()

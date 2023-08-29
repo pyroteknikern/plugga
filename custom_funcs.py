@@ -28,6 +28,7 @@ async def current_period(db):
             return db_period.period
     return False
 
+
 async def next_period(db):
     db_periods = (await db.execute(select(Date))).scalars().all()
     today = datetime.today().strftime(format)
@@ -40,6 +41,7 @@ async def next_period(db):
             return db_period.period
         prev_end_date = db_end
     return False
+
 
 async def get_date_by_period(db, period):
     db_periods = (await db.execute(select(Date))).scalars().all()
@@ -92,6 +94,7 @@ async def get_user_by_username(user: str, db):
         if db_user.username == user:
             return db_user
 
+
 async def make_msg_times(db):
     message = ""
     cp = await current_period(db)
@@ -100,7 +103,7 @@ async def make_msg_times(db):
         cp_period_start = datetime.strptime(cp_period.start_date, format)
         cp_period_end = datetime.strptime(cp_period.end_date, format)
         cp_middle_date = cp_period_start + (cp_period_start - cp_period_end)/2
-        
+
         message += "**Current period:**                   "
         message += f"{cp}\n"
         message += "**Period started at:**              "
@@ -123,7 +126,10 @@ async def make_msg_times(db):
 
 async def send_stat(server_members, bot, ctx=None):
     db = await gen_db()
-    message = await make_msg_times(db)
+    if ctx is None:
+        message = await make_msg_times(db)
+    else:
+        message = ""
     channel = bot.get_channel(TEXT_CHANNEL)
     for server_member in server_members:
         if server_member.bot:
@@ -134,11 +140,11 @@ async def send_stat(server_members, bot, ctx=None):
             message += "Your name is not registerd\n"
             continue
         if ctx is not None:
-            message += f"**Today:**       {format_time(db_member.day_time)}\n"
-        message += f"**This week:**   {format_time(db_member.week_time)}\n"
-        message += f"**Total:**       {format_time(db_member.total_time)}\n"
-        message += f"**Missed days:** {db_member.missed_days}\n"
-        message += f"**Dept:**        {db_member.missed_days*50}\n"
+            message += f"**Today:**\t\t\t\t{format_time(db_member.day_time)}\n"
+        message += f"**This week:**\t\t{format_time(db_member.week_time)}\n"
+        message += f"**Total:**\t\t\t\t  {format_time(db_member.total_time)}\n"
+        message += f"**Missed days:**    {db_member.missed_days}\n"
+        message += f"**Debt:**\t\t\t\t  {db_member.missed_days*50} kr\n"
     await db.close()
     if ctx is not None:
         await ctx.send(message)
@@ -151,10 +157,12 @@ def format_time(minutes):
     hours, minutes = divmod(minutes, 60)
     return f"{hours} h {minutes} min"
 
+
 def format_date(date) -> str:
     date = date.split(" ")
     date = date[0]
     return date
+
 
 def get_current_hour() -> int:
     return int(datetime.now(SWE_TIME).strftime("%H"))
