@@ -102,7 +102,7 @@ async def make_msg_times(db):
     if cp is not False:
         cp_period_start = datetime.strptime(cp_period.start_date, format)
         cp_period_end = datetime.strptime(cp_period.end_date, format)
-        cp_middle_date = cp_period_start + (cp_period_start - cp_period_end)/2
+        cp_middle_date = cp_period_start + (cp_period_end - cp_period_start)/2
 
         message += "**Current period:**                   "
         message += f"{cp}\n"

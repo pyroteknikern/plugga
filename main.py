@@ -96,7 +96,7 @@ async def accept_challange(ctx):
     cp_period = await get_date_by_period(db, cp)
     cp_period_start = datetime.strptime(cp_period.start_date, format)
     cp_period_end = datetime.strptime(cp_period.end_date, format)
-    cp_middle_date = cp_period_start + (cp_period_start - cp_period_end)/2
+    cp_middle_date = cp_period_start + (cp_period_end - cp_period_start)/2
     today = datetime.today().strftime(format)
     today = datetime.strptime(today, format)
     db_member = await get_user_by_username(ctx.author.name, db)
