@@ -7,16 +7,22 @@ from models import User, Date
 from discord.ext import tasks
 
 from create_bot import create_bot
-from custom_funcs import send_stat, gen_db, date_overlaps, get_date_by_period, get_user_by_username, current_period, get_current_hour, delete_prev_period_data, count_missed_days
+from custom_funcs import send_stat, make_msg_times, gen_db, date_overlaps, get_date_by_period, get_user_by_username, current_period, get_current_hour, delete_prev_period_data, count_missed_days
 
 from global_variables import GUILD_ID, VOICE_CHANNEL, token, week_reset_day, day_reset_time, format
 
 bot = create_bot()
 
+@bot.command(name="checkperiod")
+async def display_period(ctx):
+    db = await gen_db()
+    message = await make_msg_times(db)
+    await ctx.send(message)
+    await db.close()
 
 @bot.command(name="mytime")
 async def display_stat(ctx):
-    await send_stat([ctx.author], ctx)
+    await send_stat([ctx.author], bot, ctx=ctx)
 
 
 @bot.command(name="period")
@@ -35,9 +41,7 @@ async def set_test_date(ctx, date):
     end_date += f"{str(end_date_list[1])}-"
     end_date += f"{str(end_date_list[2])}"
 
-    format = "%d-%m-%Y"
     res = True
-
     try:
         res = bool(datetime.strptime(start_date, format))
     except ValueError:
@@ -86,12 +90,23 @@ async def test2(ctx):
 @bot.command(name="accept-challange")
 async def accept_challange(ctx):
     db = await gen_db()
-    date_period = get_date_by_period(db)
+    
+    cp = await current_period(db)
+    cp_period = await get_date_by_period(db, cp)
+    cp_period_start = datetime.strptime(cp_period.start_date, format)
+    cp_period_end = datetime.strptime(cp_period.end_date, format)
+    cp_middle_date = cp_period_start + (cp_period_start - cp_period_end)/2
+    today = datetime.today().strftime(format)
+    today = datetime.strptime(today, format)
     
     db_member = await get_user_by_username(ctx.author.name, db)
+    if today >= cp_middle_date:
+        await db.close()
+        await ctx.send('You are too late to join the current period, sorry!')
+        return
     if db_member.period_failed != 0:
         await db.close()
-        await ctx.send('Error: 69, lol get blocked')
+        await ctx.send('Error: 69\nlol get blocked!')
         return
     db_member.challange_accepted = True
     await ctx.send('Sucefully joined the chllange, best of luck!')
@@ -103,7 +118,6 @@ async def accept_challange(ctx):
 async def quit_challange(ctx):
     db = await gen_db()
     cp = await current_period(db)
-    db_periods = (await db.execute(select(Date))).scalars().all()
     db_member = await get_user_by_username(ctx.author.name, db)
     if not cp and db_member.period_failed != 0:
         await db.close()
@@ -147,7 +161,7 @@ async def time_reset():
     today = datetime.today().strftime(format)
     today = datetime.strptime(today, format)
     if get_current_hour() == day_reset_time:
-        cp = current_period(db)
+        cp = await current_period(db)
         cp_period = await get_date_by_period(db, cp)
         if cp_period is not None:
             cp_period_end = datetime.strptime(cp_period.end_date, format)
@@ -162,7 +176,7 @@ async def time_reset():
                 db_member.missed_days += 1
             db_member.day_time = 0
         if today_num == week_reset_day:
-            await send_stat(server_members)
+            await send_stat(server_members, bot)
             await create_members()
             for db_member in db_members:
                 if db_member.week_time < 450 and count_days and db_member.period_failed == 0:

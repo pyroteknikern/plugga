@@ -3,14 +3,11 @@ from models import Base, Date, User
 from sqlalchemy.ext.asyncio import (create_async_engine,
                                     async_sessionmaker)
 from sqlalchemy.future import select
-from global_variables import TEXT_CHANNEL, SWE_TIME
-from create_bot import create_bot
+from global_variables import TEXT_CHANNEL, SWE_TIME, format
 
 engine = create_async_engine("sqlite+aiosqlite:///db.sqlite3",
                              connect_args={"check_same_thread": False})
 SessionLocal = async_sessionmaker(engine)
-
-bot = create_bot()
 
 
 async def gen_db():
@@ -31,6 +28,18 @@ async def current_period(db):
             return db_period.period
     return False
 
+async def next_period(db):
+    db_periods = (await db.execute(select(Date))).scalars().all()
+    today = datetime.today().strftime(format)
+    today = datetime.strptime(today, format)
+    prev_end_date = today
+    for db_period in db_periods:
+        db_end = datetime.strptime(db_period.end_date, format)
+        db_start = datetime.strptime(db_period.start_date, format)
+        if today < db_start and today > prev_end_date:
+            return db_period.period
+        prev_end_date = db_end
+    return False
 
 async def get_date_by_period(db, period):
     db_periods = (await db.execute(select(Date))).scalars().all()
@@ -83,10 +92,38 @@ async def get_user_by_username(user: str, db):
         if db_user.username == user:
             return db_user
 
-
-async def send_stat(server_members, ctx=None):
-    db = await gen_db()
+async def make_msg_times(db):
     message = ""
+    cp = await current_period(db)
+    cp_period = await get_date_by_period(db, cp)
+    if cp is not False:
+        cp_period_start = datetime.strptime(cp_period.start_date, format)
+        cp_period_end = datetime.strptime(cp_period.end_date, format)
+        cp_middle_date = cp_period_start + (cp_period_start - cp_period_end)/2
+        
+        message += "**Current period:**                   "
+        message += f"{cp}\n"
+        message += "**Period started at:**              "
+        temp_str = format_date(f"{cp_period_start}")
+        message += temp_str
+        message += "\n**Period middle date is:**      "
+        temp_str = format_date(f"{cp_middle_date}")
+        message += temp_str
+        message += "\n**Period ends at:**                    "
+        temp_str = format_date(f"{cp_period_end}")
+        message += temp_str
+        message += "\n*The above content may not be accurate, make sure to keep track on your own calander!*"
+    else:
+        np = await next_period(db)
+        np_period = await get_date_by_period(db, np)
+        if np is False:
+            message = "**No registered periods for the moment, please stand by (maybe relax) until next period!**"
+    return message
+
+
+async def send_stat(server_members, bot, ctx=None):
+    db = await gen_db()
+    message = await make_msg_times(db)
     channel = bot.get_channel(TEXT_CHANNEL)
     for server_member in server_members:
         if server_member.bot:
@@ -94,14 +131,14 @@ async def send_stat(server_members, ctx=None):
         db_member = await get_user_by_username(server_member.name, db)
         message += f"{server_member.mention}\n"
         if db_member is None:
-            message += "your name is not registerd\n"
+            message += "Your name is not registerd\n"
             continue
         if ctx is not None:
-            message += f"Today: {format_time(db_member.day_time)}\n"
-        message += f"This week: {format_time(db_member.week_time)}\n"
-        message += f"Total: {format_time(db_member.total_time)}\n"
-        message += f"Missed days: {db_member.missed_days}\n"
-        message += f"Dept: {db_member.missed_days*50}\n"
+            message += f"**Today:**       {format_time(db_member.day_time)}\n"
+        message += f"**This week:**   {format_time(db_member.week_time)}\n"
+        message += f"**Total:**       {format_time(db_member.total_time)}\n"
+        message += f"**Missed days:** {db_member.missed_days}\n"
+        message += f"**Dept:**        {db_member.missed_days*50}\n"
     await db.close()
     if ctx is not None:
         await ctx.send(message)
@@ -114,6 +151,10 @@ def format_time(minutes):
     hours, minutes = divmod(minutes, 60)
     return f"{hours} h {minutes} min"
 
+def format_date(date) -> str:
+    date = date.split(" ")
+    date = date[0]
+    return date
 
 def get_current_hour() -> int:
     return int(datetime.now(SWE_TIME).strftime("%H"))
