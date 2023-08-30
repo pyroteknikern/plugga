@@ -172,14 +172,14 @@ async def time_reset():
                 delete_prev_period_data(db)
         for db_member in db_members:
             count_days = await count_missed_days(db)
-            if db_member.day_time < 90 and today_num < 5 and count_days and db_member.period_failed == 0:
+            if db_member.day_time < 90 and today_num < 5 and count_days and db_member.period_failed == 0 and db_member.challange_accepted:
                 db_member.missed_days += 1
             db_member.day_time = 0
         if today_num == week_reset_day:
             await send_stat(server_members, bot)
             await create_members()
             for db_member in db_members:
-                if db_member.week_time < 450 and count_days and db_member.period_failed == 0:
+                if db_member.week_time < 450 and count_days and db_member.period_failed == 0 and db_member.challange_accepted:
                     db_member.missed_days += 1
                 db_member.week_time = 0
     await db.commit()
