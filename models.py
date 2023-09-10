@@ -16,6 +16,7 @@ class User(Base):
     missed_days: Mapped[int]
     challange_accepted: Mapped[bool]
     period_failed: Mapped[int]
+    deleted: Mapped[bool]
 
 
 class Date(Base):

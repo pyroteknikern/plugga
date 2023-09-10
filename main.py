@@ -7,9 +7,9 @@ from models import User, Date
 from discord.ext import tasks
 
 from create_bot import create_bot
-from custom_funcs import send_stat, make_msg_times, gen_db, date_overlaps, get_date_by_period, get_user_by_username, current_period, get_current_hour, delete_prev_period_data, count_missed_days
+from custom_funcs import send_stat, period_info, gen_db, date_overlaps, get_date_by_period, get_user_by_username, current_period, get_current_hour, delete_prev_period_data, is_tentap
 
-from global_variables import GUILD_ID, VOICE_CHANNEL, token, week_reset_day, day_reset_time, format
+from global_variables import GUILD_ID, VOICE_CHANNEL, token, WEEK_RESET_DAY, DAY_RESET_TIME, FORMAT, MIN_TIME_DAY, MIN_TIME_WEEK
 
 bot = create_bot()
 
@@ -17,7 +17,7 @@ bot = create_bot()
 @bot.command(name="checkperiod")
 async def display_period(ctx):
     db = await gen_db()
-    message = await make_msg_times(db)
+    message = await period_info(db)
     await ctx.send(message)
     await db.close()
 
@@ -45,30 +45,22 @@ async def set_test_date(ctx, date):
 
     res = True
     try:
-        res = bool(datetime.strptime(start_date, format))
+        res = bool(datetime.strptime(start_date, FORMAT))
     except ValueError:
         res = False
     if not res:
-        await ctx.send("this is not the correct format")
-        return
-    today = datetime.today().strftime(format)
-    today = datetime.strptime(today, format)
-    if today > datetime.strptime(start_date,
-                                 format) or datetime.strptime(start_date,
-                                                              format) >= datetime.strptime(end_date,
-                                                                                           format):
-        await ctx.send("this is not a valid period")
+        await ctx.send("this is not the correct FORMAT")
         return
 
     db = await gen_db()
-    if await date_overlaps(start_date, end_date, db, ctx, format):
+    if await date_overlaps(start_date, end_date, db, ctx, FORMAT):
         await db.close()
         return
     new_start_date = Date(start_date=start_date, end_date=end_date, period=period)
     db.add(new_start_date)
     await db.commit()
     await db.close()
-    await ctx.send("period was added")
+    await ctx.send(f"period was added\n{start_date}, {end_date}\n")
 
 
 @bot.command(name="test")
@@ -94,11 +86,11 @@ async def accept_challange(ctx):
     db = await gen_db()
     cp = await current_period(db)
     cp_period = await get_date_by_period(db, cp)
-    cp_period_start = datetime.strptime(cp_period.start_date, format)
-    cp_period_end = datetime.strptime(cp_period.end_date, format)
+    cp_period_start = datetime.strptime(cp_period.start_date, FORMAT)
+    cp_period_end = datetime.strptime(cp_period.end_date, FORMAT)
     cp_middle_date = cp_period_start + (cp_period_end - cp_period_start)/2
-    today = datetime.today().strftime(format)
-    today = datetime.strptime(today, format)
+    today = datetime.today().strftime(FORMAT)
+    today = datetime.strptime(today, FORMAT)
     db_member = await get_user_by_username(ctx.author.name, db)
     if today >= cp_middle_date:
         await db.close()
@@ -130,6 +122,26 @@ async def quit_challange(ctx):
     await db.close()
 
 
+@bot.command(name="delete")
+async def delete_member(ctx, name):
+    db = await gen_db()
+    db_member = await get_user_by_username(name, db)
+    db_member.deleted = True
+    await db.commit()
+    await db.close()
+    await ctx.send(f"{name} was deleted")
+
+
+@bot.command(name="undelete")
+async def undelete_member(ctx, name):
+    db = await gen_db()
+    db_member = await get_user_by_username(name, db)
+    db_member.deleted = False
+    await db.commit()
+    await db.close()
+    await ctx.send(f"{name} was undeleted")
+
+
 @bot.event
 async def create_members():
     guild = bot.get_guild(GUILD_ID)
@@ -145,45 +157,60 @@ async def create_members():
                             day_time=0,
                             missed_days=0,
                             challange_accepted=False,
-                            period_failed=0)
+                            period_failed=0,
+                            deleted=False
+                            )
             db.add(new_user)
             await db.commit()
     await db.close()
 
 
-@tasks.loop(minutes=60)
-async def time_reset():
-    guild = bot.get_guild(GUILD_ID)
-    server_members = guild.members
+@tasks.loop(hours=1)
+async def once_every_hour():
+    await create_members()
     db = await gen_db()
-    db_members = (await db.execute(select(User))).scalars().all()
-    today_num = date.today().weekday()
-    today = datetime.today().strftime(format)
-    today = datetime.strptime(today, format)
-    if get_current_hour() == day_reset_time:
-        cp = await current_period(db)
-        cp_period = await get_date_by_period(db, cp)
-        if cp_period is not None:
-            cp_period_end = datetime.strptime(cp_period.end_date, format)
-            if cp_period_end == today:
-                for db_member in db_members:
-                    if db_member.period_failed != 0:
-                        db_member.period_failed -= 1
-                delete_prev_period_data(db)
-        for db_member in db_members:
-            count_days = await count_missed_days(db)
-            if db_member.day_time < 90 and today_num < 5 and count_days and db_member.period_failed == 0 and db_member.challange_accepted:
-                db_member.missed_days += 1
-            db_member.day_time = 0
-        if today_num == week_reset_day:
-            await send_stat(server_members, bot)
-            await create_members()
-            for db_member in db_members:
-                if db_member.week_time < 450 and count_days and db_member.period_failed == 0 and db_member.challange_accepted:
-                    db_member.missed_days += 1
-                db_member.week_time = 0
+    if get_current_hour() == DAY_RESET_TIME:
+        await once_a_day(db, bot)
     await db.commit()
     await db.close()
+
+
+async def once_a_day(db, bot):
+    db_members = (await db.execute(select(User))).scalars().all()
+    today_num = date.today().weekday()
+    await handle_end_of_period(db)
+    for db_member in db_members:
+        if db_member.day_time < MIN_TIME_DAY and today_num < 5 and not await is_tentap and db_member.period_failed == 0 and db_member.challange_accepted:
+            db_member.missed_days += 1
+        db_member.day_time = 0
+    if today_num == WEEK_RESET_DAY:
+        once_a_week(db)
+
+
+async def handle_end_of_period(db):
+    db_members = (await db.execute(select(User))).scalars().all()
+    today = datetime.today().strftime(FORMAT)
+    today = datetime.strptime(today, FORMAT)
+    cp = await current_period(db)
+    cp_period = await get_date_by_period(db, cp)
+    if cp_period is not None:
+        cp_period_end = datetime.strptime(cp_period.end_date, FORMAT)
+        if cp_period_end == today:
+            for db_member in db_members:
+                if db_member.period_failed != 0:
+                    db_member.period_failed -= 1
+            delete_prev_period_data(db)
+
+
+async def once_a_week(db, bot):
+    db_members = (await db.execute(select(User))).scalars().all()
+    guild = bot.get_guild(GUILD_ID)
+    server_members = guild.members
+    await send_stat(server_members, bot)
+    for db_member in db_members:
+        if db_member.week_time < MIN_TIME_WEEK and not await is_tentap(db) and db_member.period_failed == 0 and db_member.challange_accepted:
+            db_member.missed_days += 1
+        db_member.week_time = 0
 
 
 @tasks.loop(minutes=1)
@@ -207,7 +234,7 @@ async def check_time():
 @bot.event
 async def on_ready():
     check_time.start()
-    time_reset.start()
+    once_every_hour.start()
     await create_members()
 
 bot.run(token)
