@@ -176,6 +176,7 @@ async def once_every_hour():
 
 
 async def once_a_day(db, bot):
+    print("every day")
     db_members = (await db.execute(select(User))).scalars().all()
     today_num = date.today().weekday()
     await handle_end_of_period(db)
@@ -184,7 +185,7 @@ async def once_a_day(db, bot):
             db_member.missed_days += 1
         db_member.day_time = 0
     if today_num == WEEK_RESET_DAY:
-        once_a_week(db)
+        await once_a_week(db, bot)
 
 
 async def handle_end_of_period(db):
@@ -203,6 +204,7 @@ async def handle_end_of_period(db):
 
 
 async def once_a_week(db, bot):
+    print("every week")
     db_members = (await db.execute(select(User))).scalars().all()
     guild = bot.get_guild(GUILD_ID)
     server_members = guild.members
