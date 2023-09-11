@@ -67,6 +67,7 @@ async def delete_prev_period_data(db):
     await db.delete(db_dates[0])
     await db.commit()
     await db.close()
+    print("previous user data was deleted")
 
 
 async def date_overlaps(start_date, end_date, db, ctx, FORMAT):
@@ -107,15 +108,15 @@ async def period_info(db) -> str:
         message += "**Current period:**                   "
         message += f"{cp}\n"
         message += "**Period started at:**              "
-        temp_str = f"{cp_period_start}"
+        temp_str = f"{cp_period_start.strftime(FORMAT)}"
         message += temp_str
         message += "\n**Period middle date is:**      "
-        temp_str = f"{cp_middle_date}"
+        temp_str = f"{cp_middle_date.strftime(FORMAT)}"
         message += temp_str
         message += "\n**Period ends at:**                    "
-        temp_str = f"{cp_period_end}"
+        temp_str = f"{cp_period_end.strftime(FORMAT)}"
         message += temp_str
-        message += "\n*The above content may not be accurate, make sure to keep track on your own calander!*"
+        message += "\n*The above content may not be accurate, make sure to keep track on your own calander!*\n"
     else:
         np = await next_period(db)
         if np is False:
@@ -170,5 +171,5 @@ async def is_tentap(db) -> bool:
         db_start = datetime.strptime(db_period.start_date, FORMAT)
         stop_date = db_end - timedelta(days=14)
         if today >= db_start and today < stop_date:
-            return True
-    return False
+            return False
+    return True

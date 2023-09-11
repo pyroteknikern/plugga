@@ -9,7 +9,7 @@ VOICE_CHANNEL = int(os.getenv('voiceChannel'))
 GUILD_ID = int(os.getenv('guildId'))
 TEXT_CHANNEL = int(os.getenv('textChannel'))
 
-DAY_RESET_TIME = 11
+DAY_RESET_TIME = 4
 WEEK_RESET_DAY = 0
 
 MIN_TIME_DAY = 90

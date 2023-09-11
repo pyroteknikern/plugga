@@ -11,6 +11,8 @@ from custom_funcs import send_stat, period_info, gen_db, date_overlaps, get_date
 
 from global_variables import GUILD_ID, VOICE_CHANNEL, token, WEEK_RESET_DAY, DAY_RESET_TIME, FORMAT, MIN_TIME_DAY, MIN_TIME_WEEK
 
+from time import sleep
+
 bot = create_bot()
 
 
@@ -181,11 +183,24 @@ async def once_a_day(db, bot):
     today_num = date.today().weekday()
     await handle_end_of_period(db)
     for db_member in db_members:
-        if db_member.day_time < MIN_TIME_DAY and today_num < 5 and not await is_tentap and db_member.period_failed == 0 and db_member.challange_accepted:
+        if db_member.day_time < MIN_TIME_DAY and today_num < 5 and not (await is_tentap(db)) and db_member.period_failed == 0 and db_member.challange_accepted:
             db_member.missed_days += 1
         db_member.day_time = 0
     if today_num == WEEK_RESET_DAY:
         await once_a_week(db, bot)
+
+
+async def once_a_week(db, bot):
+    print("every week")
+    db_members = (await db.execute(select(User))).scalars().all()
+    guild = bot.get_guild(GUILD_ID)
+    server_members = guild.members
+    for db_member in db_members:
+        if db_member.week_time < MIN_TIME_WEEK and not (await is_tentap(db)) and db_member.period_failed == 0 and db_member.challange_accepted:
+            db_member.missed_days += 1
+        db_member.week_time = 0
+    await db.commit()
+    await send_stat(server_members, bot)
 
 
 async def handle_end_of_period(db):
@@ -201,18 +216,6 @@ async def handle_end_of_period(db):
                 if db_member.period_failed != 0:
                     db_member.period_failed -= 1
             delete_prev_period_data(db)
-
-
-async def once_a_week(db, bot):
-    print("every week")
-    db_members = (await db.execute(select(User))).scalars().all()
-    guild = bot.get_guild(GUILD_ID)
-    server_members = guild.members
-    await send_stat(server_members, bot)
-    for db_member in db_members:
-        if db_member.week_time < MIN_TIME_WEEK and not await is_tentap(db) and db_member.period_failed == 0 and db_member.challange_accepted:
-            db_member.missed_days += 1
-        db_member.week_time = 0
 
 
 @tasks.loop(minutes=1)
