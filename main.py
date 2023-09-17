@@ -202,7 +202,7 @@ async def once_a_week(db, bot):
     await db.commit()
     await send_stat(server_members, bot)
 
-
+#går kanske att förbättra
 async def handle_end_of_period(db):
     db_members = (await db.execute(select(User))).scalars().all()
     today = datetime.today().strftime(FORMAT)
@@ -217,7 +217,7 @@ async def handle_end_of_period(db):
                     db_member.period_failed -= 1
             delete_prev_period_data(db)
 
-
+#gör om
 @tasks.loop(minutes=1)
 async def check_time():
     if get_current_hour() < 5:
