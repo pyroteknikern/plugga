@@ -183,7 +183,7 @@ async def once_a_day(db, bot):
     today_num = date.today().weekday()
     await handle_end_of_period(db)
     for db_member in db_members:
-        if db_member.day_time < MIN_TIME_DAY and today_num < 5 and not (await is_tentap(db)) and db_member.period_failed == 0 and db_member.challange_accepted:
+        if db_member.day_time < MIN_TIME_DAY and today_num < 5 and today_num != 0 and not (await is_tentap(db)) and db_member.period_failed == 0 and db_member.challange_accepted:
             db_member.missed_days += 1
         db_member.day_time = 0
     if today_num == WEEK_RESET_DAY:
