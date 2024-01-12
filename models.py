@@ -13,10 +13,11 @@ class User(Base):
     total_time: Mapped[int]
     week_time: Mapped[int]
     day_time: Mapped[int]
-    missed_days: Mapped[int]
+    missed: Mapped[int]
     challange_accepted: Mapped[bool]
     period_failed: Mapped[int]
     deleted: Mapped[bool]
+    daily_meme_used: Mapped[bool]
 
 
 class Date(Base):

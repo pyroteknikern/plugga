@@ -7,11 +7,27 @@ from models import User, Date
 from discord.ext import tasks
 
 from create_bot import create_bot
-from custom_funcs import send_stat, period_info, gen_db, date_overlaps, get_date_by_period, get_user_by_username, current_period, get_current_hour, delete_prev_period_data, is_tentap
 
-from global_variables import GUILD_ID, VOICE_CHANNEL, token, WEEK_RESET_DAY, DAY_RESET_TIME, FORMAT, MIN_TIME_DAY, MIN_TIME_WEEK
+from custom_funcs import (send_stat,
+                          period_info,
+                          gen_db,
+                          date_overlaps,
+                          get_date_by_period,
+                          get_user_by_username,
+                          current_period, get_current_hour,
+                          delete_prev_period_data,
+                          is_tentap,
+                          get_link,
+                          Scrape)
 
-from time import sleep
+from global_variables import (GUILD_ID,
+                              VOICE_CHANNEL,
+                              token,
+                              WEEK_RESET_DAY,
+                              DAY_RESET_TIME,
+                              FORMAT,
+                              MIN_TIME_DAY,
+                              MIN_TIME_WEEK)
 
 bot = create_bot()
 
@@ -65,6 +81,21 @@ async def set_test_date(ctx, date):
     await ctx.send(f"period was added\n{start_date}, {end_date}\n")
 
 
+@bot.command(name="meme")
+async def meme(ctx):
+    db = await gen_db()
+    user = await get_user_by_username(ctx.author.name, db)
+    if user.daily_meme_used:
+        await ctx.send("You have used your daily meme today")
+        await db.close()
+        return
+    link = get_link()
+    await ctx.send(f"This is your daily meme:\n{link}")
+    user.daily_meme_used = True
+    await db.commit()
+    await db.close()
+
+
 @bot.command(name="test")
 async def test(ctx):
     db = gen_db()
@@ -81,6 +112,12 @@ async def test2(ctx):
     for j, i in enumerate(users):
         print(i.username)
     await db.close()
+
+
+@bot.command(name="Motivate-Me")
+async def MotivateIShall(ctx):
+    pass
+    # bild, idk
 
 
 @bot.command(name="accept-challange")
@@ -112,14 +149,14 @@ async def accept_challange(ctx):
 async def quit_challange(ctx):
     db = await gen_db()
     cp = await current_period(db)
-    db_member = await get_user_by_username(ctx.author.name, db)
+    db_member = await get_user_by_username(db, ctx.author.name)
     if not cp and db_member.period_failed != 0:
         await db.close()
         await ctx.send("there is not currently an active period")
         return
     db_member.challange_accepted = False
     db_member.period_failed = 2
-    await ctx.send("I KNEW IT! \n jk, this is pre-written - still sad that u quit")
+    await ctx.send("I KNEW IT! \n jk ofcouse im a bot! I don't care!")
     await db.commit()
     await db.close()
 
@@ -157,10 +194,11 @@ async def create_members():
                             total_time=0,
                             week_time=0,
                             day_time=0,
-                            missed_days=0,
+                            missed=0,
                             challange_accepted=False,
                             period_failed=0,
-                            deleted=False
+                            deleted=False,
+                            daily_meme_used=False
                             )
             db.add(new_user)
             await db.commit()
@@ -183,8 +221,9 @@ async def once_a_day(db, bot):
     today_num = date.today().weekday()
     await handle_end_of_period(db)
     for db_member in db_members:
+        db_member.daily_meme_used = False
         if db_member.day_time < MIN_TIME_DAY and today_num < 5 and today_num != 0 and not (await is_tentap(db)) and db_member.period_failed == 0 and db_member.challange_accepted:
-            db_member.missed_days += 1
+            db_member.missed += 1
         db_member.day_time = 0
     if today_num == WEEK_RESET_DAY:
         await once_a_week(db, bot)
@@ -197,12 +236,13 @@ async def once_a_week(db, bot):
     server_members = guild.members
     for db_member in db_members:
         if db_member.week_time < MIN_TIME_WEEK and not (await is_tentap(db)) and db_member.period_failed == 0 and db_member.challange_accepted:
-            db_member.missed_days += 1
+            db_member.missed += 1
         db_member.week_time = 0
     await db.commit()
     await send_stat(server_members, bot)
 
-#går kanske att förbättra
+
+# går kanske att förbättra
 async def handle_end_of_period(db):
     db_members = (await db.execute(select(User))).scalars().all()
     today = datetime.today().strftime(FORMAT)
@@ -217,6 +257,7 @@ async def handle_end_of_period(db):
                     db_member.period_failed -= 1
             delete_prev_period_data(db)
 
+
 #gör om
 @tasks.loop(minutes=1)
 async def check_time():
@@ -226,7 +267,7 @@ async def check_time():
     channel = bot.get_channel(VOICE_CHANNEL)
     vc_members = channel.members
     for vc_member in vc_members:
-        db_user = await get_user_by_username(vc_member.name, db)
+        db_user = await get_user_by_username(db, vc_member.name)
         if db_user is None:
             continue
         db_user.day_time += 1
@@ -238,8 +279,10 @@ async def check_time():
 
 @bot.event
 async def on_ready():
+    Scrape()
+    await create_members()
+
     check_time.start()
     once_every_hour.start()
-    await create_members()
 
 bot.run(token)
