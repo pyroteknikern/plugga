@@ -8,6 +8,7 @@ from global_variables import TEXT_CHANNEL, SWE_TIME, FORMAT
 import praw
 import random
 import os
+import logging
 
 engine = create_async_engine("sqlite+aiosqlite:///db.sqlite3",
                              connect_args={"check_same_thread": False})
@@ -45,7 +46,6 @@ def Scrape():
                          user_agent=os.getenv("userAgent"))
     subreddit = reddit.subreddit("memes")
     top_post = subreddit.top("week", limit=meme_max)
-    print("scraping...")
     for post in top_post:
         for sufix in filetypes:
             if post.url.endswith(sufix):
@@ -54,7 +54,7 @@ def Scrape():
                 posturl_list.append(posturl)
                 posttitle_list.append(posttitle)
                 break
-    print("scrape successful. " + str(len(posturl_list)))
+    logging.info("Scrape successful. " + str(len(posturl_list)))
     link_list = posturl_list
 
 
@@ -137,7 +137,6 @@ async def get_user_by_username(db, user: str):
 
 
 async def period_info(db) -> str:
-    message = ""
     cp = await current_period(db)
     cp_period = await get_date_by_period(db, cp)
     if cp is not False:
@@ -145,22 +144,21 @@ async def period_info(db) -> str:
         cp_period_end = datetime.strptime(cp_period.end_date, FORMAT)
         cp_middle_date = cp_period_start + (cp_period_end - cp_period_start)/2
 
-        message += "**Current period:**                   "
-        message += f"{cp}\n"
-        message += "**Period started at:**              "
-        temp_str = f"{cp_period_start.strftime(FORMAT)}"
-        message += temp_str
-        message += "\n**Period middle date is:**      "
-        temp_str = f"{cp_middle_date.strftime(FORMAT)}"
-        message += temp_str
-        message += "\n**Period ends at:**                    "
-        temp_str = f"{cp_period_end.strftime(FORMAT)}"
-        message += temp_str
-        message += "\n*The above content may not be accurate, make sure to keep track on your own calander!*\n"
+        message = ("**Current period:**                   "
+                   f"{cp}\n"
+                   "**Period started at:**              "
+                   f"{cp_period_start.strftime(FORMAT)}"
+                   "\n**Period middle date is:**      "
+                   f"{cp_middle_date.strftime(FORMAT)}"
+                   "\n**Period ends at:**                    "
+                   f"{cp_period_end.strftime(FORMAT)}"
+                   "\n*The above content may not be accurate, "
+                   "make sure to keep track on your own calander!*\n")
     else:
         np = await next_period(db)
         if np is False:
-            message = "**No registered periods for the moment, please stand by (maybe relax) until next period!**"
+            message = ("**No registered periods for the moment, "
+                       "please stand by (maybe relax) until next period!**")
     return message
 
 
@@ -174,17 +172,18 @@ async def send_stat(server_members, bot, ctx=None):
     for server_member in server_members:
         if server_member.bot:
             continue
-        db_member = await get_user_by_username(server_member.name, db)
+        db_member = await get_user_by_username(db, server_member.name)
         message += f"{server_member.mention}\n"
         if db_member is None:
             message += "Your name is not registerd\n"
             continue
         if ctx is not None:
-            message += f"**Today:**\t\t\t\t{FORMAT_time(db_member.day_time)}\n"
-        message += f"**This week:**\t\t{FORMAT_time(db_member.week_time)}\n"
-        message += f"**Total:**\t\t\t\t  {FORMAT_time(db_member.total_time)}\n"
-        message += f"**Missed days:**    {db_member.missed}\n"
-        message += f"**Debt:**\t\t\t\t  {db_member.missed*150} kr\n"
+            message += (
+                    f"**Today:**\t\t\t\t{FORMAT_time(db_member.day_time)}\n"
+                    f"**This week:**\t\t{FORMAT_time(db_member.week_time)}\n"
+                    f"**Total:**\t\t\t\t {FORMAT_time(db_member.total_time)}\n"
+                    f"**Missed days:**    {db_member.missed}\n"
+                    f"**Debt:**\t\t\t\t  {db_member.missed*150} kr\n")
     await db.close()
     if ctx is not None:
         await ctx.send(message)

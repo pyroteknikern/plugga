@@ -8,6 +8,12 @@ from discord.ext import tasks
 
 from create_bot import create_bot
 
+from motivate_funcs import (motivate_0,
+                            motivate_1,
+                            motivate_2,
+                            motivate_3)
+
+
 from custom_funcs import (send_stat,
                           period_info,
                           gen_db,
@@ -28,6 +34,11 @@ from global_variables import (GUILD_ID,
                               FORMAT,
                               MIN_TIME_DAY,
                               MIN_TIME_WEEK)
+
+import logging
+import random
+
+logging.basicConfig(filename="plugga_bot.log", level=logging.INFO)
 
 bot = create_bot()
 
@@ -53,13 +64,14 @@ async def set_test_date(ctx, date):
     start_date_list = a[0].split(",")
     end_date_list = a[1].split(",")
     period = int(a[2])
-    start_date = f"{str(start_date_list[0])}-"
-    start_date += f"{str(start_date_list[1])}-"
-    start_date += f"{str(start_date_list[2])}"
 
-    end_date = f"{str(end_date_list[0])}-"
-    end_date += f"{str(end_date_list[1])}-"
-    end_date += f"{str(end_date_list[2])}"
+    start_date = (f"{str(start_date_list[0])}-"
+                  f"{str(start_date_list[1])}-"
+                  f"{str(start_date_list[2])}")
+
+    end_date = (f"{str(end_date_list[0])}-"
+                f"{str(end_date_list[1])}-"
+                f"{str(end_date_list[2])}")
 
     res = True
     try:
@@ -71,10 +83,13 @@ async def set_test_date(ctx, date):
         return
 
     db = await gen_db()
-    if await date_overlaps(start_date, end_date, db, ctx, FORMAT):
+    if await date_overlaps(db, ctx, start_date, end_date):
         await db.close()
         return
-    new_start_date = Date(start_date=start_date, end_date=end_date, period=period)
+    new_start_date = Date(start_date=start_date,
+                          end_date=end_date,
+                          period=period
+                          )
     db.add(new_start_date)
     await db.commit()
     await db.close()
@@ -84,7 +99,7 @@ async def set_test_date(ctx, date):
 @bot.command(name="meme")
 async def meme(ctx):
     db = await gen_db()
-    user = await get_user_by_username(ctx.author.name, db)
+    user = await get_user_by_username(db, ctx.author.name)
     if user.daily_meme_used:
         await ctx.send("You have used your daily meme today")
         await db.close()
@@ -114,10 +129,18 @@ async def test2(ctx):
     await db.close()
 
 
-@bot.command(name="Motivate-Me")
+@bot.command(name="motivate-me")
 async def MotivateIShall(ctx):
-    pass
-    # bild, idk
+    num = random.randint(0, 3)
+    match num:
+        case 0:
+            await motivate_0(ctx)
+        case 1:
+            await motivate_1(ctx)
+        case 2:
+            await motivate_2(ctx)
+        case 3:
+            await motivate_3(ctx)
 
 
 @bot.command(name="accept-challange")
@@ -189,7 +212,7 @@ async def create_members():
     for i, member in enumerate(memberList):
         if member.bot:
             continue
-        if await get_user_by_username(member.name, db) is None:
+        if await get_user_by_username(db, member.name) is None:
             new_user = User(username=member.name,
                             total_time=0,
                             week_time=0,
@@ -202,11 +225,13 @@ async def create_members():
                             )
             db.add(new_user)
             await db.commit()
+            logging.info(f"Created new user: {member.name}")
     await db.close()
 
 
 @tasks.loop(hours=1)
 async def once_every_hour():
+    logging.info("Loop 1h")
     await create_members()
     db = await gen_db()
     if get_current_hour() == DAY_RESET_TIME:
@@ -216,49 +241,97 @@ async def once_every_hour():
 
 
 async def once_a_day(db, bot):
-    print("every day")
+    logging.info("once_a_day")
     db_members = (await db.execute(select(User))).scalars().all()
     today_num = date.today().weekday()
     await handle_end_of_period(db)
+    reason = 0
     for db_member in db_members:
-        db_member.daily_meme_used = False
-        if db_member.day_time < MIN_TIME_DAY and today_num < 5 and today_num != 0 and not (await is_tentap(db)) and db_member.period_failed == 0 and db_member.challange_accepted:
-            db_member.missed += 1
+        logging.info(
+                "In once_a_day(). "
+                f"missed was not incremented due to reason: {reason}"
+                )
+        # daily resets
         db_member.day_time = 0
+        db_member.daily_meme_used = False
+        # increment missed days or not
+        if not db_member.challange_accepted:
+            reason = 1
+            continue
+        if today_num >= 5:
+            reason = 2
+            continue
+        if (await is_tentap(db)):
+            reason = 3
+            continue
+        if db_member.period_failed != 0:
+            reason = 4
+            continue
+        if db_member.day_time >= MIN_TIME_DAY:
+            reason = 5
+            continue
+        db_member.missed += 1
+
     if today_num == WEEK_RESET_DAY:
         await once_a_week(db, bot)
 
 
 async def once_a_week(db, bot):
-    print("every week")
+    logging.info("once_a_week")
     db_members = (await db.execute(select(User))).scalars().all()
     guild = bot.get_guild(GUILD_ID)
     server_members = guild.members
+    reason = 0
     for db_member in db_members:
-        if db_member.week_time < MIN_TIME_WEEK and not (await is_tentap(db)) and db_member.period_failed == 0 and db_member.challange_accepted:
-            db_member.missed += 1
+        logging.info(
+                "In once_a_week(). "
+                f"missed was not incremented due to reason: {reason}"
+                )
+        # weekly resets
         db_member.week_time = 0
+        # increment missed days at end of week
+        if not db_member.challange_accepted:
+            reason = 1
+            continue
+        if (await is_tentap(db)):
+            reason = 2
+            continue
+        if db_member.period_failed != 0:
+            reason = 3
+            continue
+        if db_member.week_time >= MIN_TIME_WEEK:
+            reason = 4
+            continue
+        db_member.missed += 1
     await db.commit()
     await send_stat(server_members, bot)
 
 
 # går kanske att förbättra
 async def handle_end_of_period(db):
+    logging.info("End of period")
     db_members = (await db.execute(select(User))).scalars().all()
     today = datetime.today().strftime(FORMAT)
     today = datetime.strptime(today, FORMAT)
     cp = await current_period(db)
     cp_period = await get_date_by_period(db, cp)
-    if cp_period is not None:
-        cp_period_end = datetime.strptime(cp_period.end_date, FORMAT)
-        if cp_period_end == today:
-            for db_member in db_members:
-                if db_member.period_failed != 0:
-                    db_member.period_failed -= 1
-            delete_prev_period_data(db)
+    if cp_period is None:
+        return
+
+    cp_period_end = datetime.strptime(cp_period.end_date, FORMAT)
+    if today < cp_period_end:
+        return
+
+    for db_member in db_members:
+        if db_member.period_failed != 0:
+            logging.info("decrementing period_failed for: "
+                         f"{db_member.username}"
+                         )
+            db_member.period_failed -= 1
+    delete_prev_period_data(db)
 
 
-#gör om
+# gör om
 @tasks.loop(minutes=1)
 async def check_time():
     if get_current_hour() < 5:
@@ -279,6 +352,7 @@ async def check_time():
 
 @bot.event
 async def on_ready():
+    logging.info("Starting bot")
     Scrape()
     await create_members()
 

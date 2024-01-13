@@ -3,3 +3,4 @@ db.sqlite3.backup
 .env
 __pycache__/
 venv/
+plugga_bot.log
