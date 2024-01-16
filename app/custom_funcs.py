@@ -1,61 +1,9 @@
 from datetime import datetime, timedelta
-from models import Base, Date, User
+from app.models import Date, User
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import (create_async_engine,
-                                    async_sessionmaker)
 from sqlalchemy.future import select
-from global_variables import TEXT_CHANNEL, SWE_TIME, FORMAT
-import praw
-import random
-import os
-import logging
-
-engine = create_async_engine("sqlite+aiosqlite:///db.sqlite3",
-                             connect_args={"check_same_thread": False})
-SessionLocal = async_sessionmaker(engine)
-
-
-async def gen_db():
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    db = SessionLocal()
-    return db
-
-meme_max = 200
-link_list = []
-
-
-def get_link() -> str:
-    global link_list
-    if link_list == []:
-        Scrape()
-    link = random.choice(link_list)
-    link_list.remove(link)
-    return link
-
-
-def Scrape():
-    global link_list
-    posturl_list = []
-    posttitle_list = []
-    filetypes = ["png", "jpg", "jpeg", "gif"]
-    clientSecret = os.getenv("clientSecret")
-    clientId = os.getenv("clientId")
-    reddit = praw.Reddit(client_id=clientId,
-                         client_secret=clientSecret,
-                         user_agent=os.getenv("userAgent"))
-    subreddit = reddit.subreddit("memes")
-    top_post = subreddit.top("week", limit=meme_max)
-    for post in top_post:
-        for sufix in filetypes:
-            if post.url.endswith(sufix):
-                posturl = post.url
-                posttitle = post.title
-                posturl_list.append(posturl)
-                posttitle_list.append(posttitle)
-                break
-    logging.info("Scrape successful. " + str(len(posturl_list)))
-    link_list = posturl_list
+from app.constants import TEXT_CHANNEL, SWE_TIME, FORMAT
+from app.gen_db import gen_db
 
 
 async def current_period(db) -> int:
@@ -108,7 +56,8 @@ async def delete_prev_period_data(db):
         reset_user(db, db_user.name)
 
 
-async def date_overlaps(db, ctx, start_date, end_date):
+# returns True if submitted date-period is overlaping existing peroids
+async def check_date_overlap(db, ctx, start_date, end_date):
     db_dates = (await db.execute(select(Date))).scalars().all()
     start_date = datetime.strptime(start_date, FORMAT)
     end_date = datetime.strptime(end_date, FORMAT)
@@ -139,7 +88,7 @@ async def get_user_by_username(db, user: str):
 async def period_info(db) -> str:
     cp = await current_period(db)
     cp_period = await get_date_by_period(db, cp)
-    if cp is not False:
+    if cp_period is not None:
         cp_period_start = datetime.strptime(cp_period.start_date, FORMAT)
         cp_period_end = datetime.strptime(cp_period.end_date, FORMAT)
         cp_middle_date = cp_period_start + (cp_period_end - cp_period_start)/2
@@ -162,6 +111,7 @@ async def period_info(db) -> str:
     return message
 
 
+# gör om
 async def send_stat(server_members, bot, ctx=None):
     db = await gen_db()
     if ctx is None:
