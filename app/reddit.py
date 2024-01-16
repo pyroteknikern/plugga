@@ -11,7 +11,7 @@ link_list = []
 def get_link() -> str:
     global link_list
     if link_list == []:
-        scrape()
+        scrape("memes")
     link = random.choice(link_list)
     link_list.remove(link)
     return link

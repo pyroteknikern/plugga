@@ -30,20 +30,22 @@ class Commands(commands.Cog):
         self.bot = bot
 
     @commands.command(name="checkperiod")
-    async def check_period(ctx):
+    async def check_period(self, ctx):
         db = await gen_db()
         message = await period_info(db)
         await ctx.send(message)
         await db.close()
 
     @commands.command(name="mytime")
-    async def my_time(ctx):
+    async def my_time(self, ctx):
         pass
 
     @commands.command(name="period")
-    async def set_test_date(ctx, date):
+    async def set_test_date(self, ctx, date):
+
         if ctx.channel.id != int(os.getenv("modChannel")):
             return
+
         a = date.split("-")
         start_date_list = a[0].split(",")
         end_date_list = a[1].split(",")
@@ -85,7 +87,7 @@ class Commands(commands.Cog):
         await ctx.send(f"period was added\n{start_date}, {end_date}\n")
 
     @commands.command(name="meme")
-    async def meme(ctx):
+    async def meme(self, ctx):
         db = await gen_db()
         user = await get_user_by_username(db, ctx.author.name)
 
@@ -101,7 +103,7 @@ class Commands(commands.Cog):
         await db.close()
 
     @commands.command(name="test")
-    async def test(ctx):
+    async def test(self, ctx):
         db = gen_db()
         users = (await db.execute(select(User))).scalars().all()
 
@@ -111,7 +113,7 @@ class Commands(commands.Cog):
         await db.close()
 
     @commands.command(name="test2")
-    async def test2(ctx):
+    async def test2(self, ctx):
         db = await gen_db()
         users = (await db.execute(select(User))).scalars().all()
 
@@ -121,7 +123,7 @@ class Commands(commands.Cog):
         await db.close()
 
     @commands.command(name="motivate-me")
-    async def MotivateIShall(ctx):
+    async def MotivateIShall(self, ctx):
         num = random.randint(0, 3)
 
         match num:
@@ -135,7 +137,7 @@ class Commands(commands.Cog):
                 await motivate_3(ctx)
 
     @commands.command(name="accept-challange")
-    async def accept_challange(ctx):
+    async def accept_challange(self, ctx):
         db = await gen_db()
         cp = await current_period(db)
         cp_period = await get_date_by_period(db, cp)
@@ -162,7 +164,7 @@ class Commands(commands.Cog):
         await db.close()
 
     @commands.command(name="quit-challange")
-    async def quit_challange(ctx):
+    async def quit_challange(self, ctx):
         db = await gen_db()
         cp = await current_period(db)
         db_member = await get_user_by_username(db, ctx.author.name)
@@ -179,7 +181,7 @@ class Commands(commands.Cog):
         await db.close()
 
     @commands.command(name="delete")
-    async def delete_member(ctx, name):
+    async def delete_member(self, ctx, name):
         db = await gen_db()
         db_member = await get_user_by_username(name, db)
         db_member.deleted = True
