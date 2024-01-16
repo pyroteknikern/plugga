@@ -104,6 +104,11 @@ async def once_a_day(db, bot):
             continue
         db_member.missed += 1
 
+    logging.info(
+            "In once_a_day(). "
+            f"missed was not incremented due to reason: {reason}"
+            )
+    await db.commit()
     if today_num == WEEK_RESET_DAY:
         await once_a_week(db)
 
@@ -111,8 +116,6 @@ async def once_a_day(db, bot):
 async def once_a_week(db, bot):
     logging.info("once_a_week")
     db_members = (await db.execute(select(User))).scalars().all()
-    guild = bot.get_guild(GUILD_ID)
-    server_members = guild.members
     reason = 0
 
     for db_member in db_members:
