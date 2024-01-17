@@ -1,25 +1,27 @@
-import os
-from sqlalchemy.future import select
 from datetime import datetime
-from app.models import User, Date
+from app.models import Date
 from discord.ext import commands
-from app.motivate_funcs import (motivate_0,
-                                motivate_1,
-                                motivate_2,
-                                motivate_3)
-from app.custom_funcs import (
-                              period_info,
-                              check_date_overlap,
-                              get_date_by_period,
-                              get_user_by_username,
-                              current_period
-                              )
+from app.motivate_funcs import (
+        motivate_0,
+        motivate_1,
+        motivate_2,
+        motivate_3
+        )
+from app.date_funcs import (
+        get_period_info,
+        check_date_overlap,
+        get_date_by_period,
+        current_period,
+        get_stat_message
+        )
+from app.custom_funcs import get_user_by_username
 from app.constants import FORMAT
-
 from app.gen_db import gen_db
 from app.reddit import get_link
 import logging
 import random
+import os
+
 
 logging.basicConfig(filename="plugga_bot.log", level=logging.INFO)
 
@@ -29,19 +31,22 @@ class Commands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name="checkperiod")
+    @commands.command(name="check-period")
     async def check_period(self, ctx):
+        logging.info(f"check-period: {ctx.author.name}")
         db = await gen_db()
-        message = await period_info(db)
+        message = await get_period_info(db)
         await ctx.send(message)
         await db.close()
 
-    @commands.command(name="mytime")
+    @commands.command(name="my-time")
     async def my_time(self, ctx):
-        pass
+        logging.info(f"my-time: {ctx.author.name}")
+        await ctx.send(await get_stat_message(ctx.author.name))
 
-    @commands.command(name="period")
-    async def set_test_date(self, ctx, date):
+    @commands.command(name="add-period")
+    async def add_period(self, ctx, date):
+        logging.info(f"add-period: {ctx.author.name}")
 
         if ctx.channel.id != int(os.getenv("modChannel")):
             return
@@ -88,6 +93,7 @@ class Commands(commands.Cog):
 
     @commands.command(name="meme")
     async def meme(self, ctx):
+        logging.info(f"meme: {ctx.author.name}")
         db = await gen_db()
         user = await get_user_by_username(db, ctx.author.name)
 
@@ -102,28 +108,9 @@ class Commands(commands.Cog):
         await db.commit()
         await db.close()
 
-    @commands.command(name="test")
-    async def test(self, ctx):
-        db = gen_db()
-        users = (await db.execute(select(User))).scalars().all()
-
-        for j, i in enumerate(users):
-            print(i.username)
-
-        await db.close()
-
-    @commands.command(name="test2")
-    async def test2(self, ctx):
-        db = await gen_db()
-        users = (await db.execute(select(User))).scalars().all()
-
-        for j, i in enumerate(users):
-            print(i.username)
-
-        await db.close()
-
     @commands.command(name="motivate-me")
     async def MotivateIShall(self, ctx):
+        logging.info(f"motivate-me: {ctx.author.name}")
         num = random.randint(0, 3)
 
         match num:
@@ -138,6 +125,7 @@ class Commands(commands.Cog):
 
     @commands.command(name="accept-challange")
     async def accept_challange(self, ctx):
+        logging.info(f"accept-challange: {ctx.author.name}")
         db = await gen_db()
         cp = await current_period(db)
         cp_period = await get_date_by_period(db, cp)
@@ -165,6 +153,7 @@ class Commands(commands.Cog):
 
     @commands.command(name="quit-challange")
     async def quit_challange(self, ctx):
+        logging.info(f"quit-challange: {ctx.author.name}")
         db = await gen_db()
         cp = await current_period(db)
         db_member = await get_user_by_username(db, ctx.author.name)
@@ -182,6 +171,7 @@ class Commands(commands.Cog):
 
     @commands.command(name="delete")
     async def delete_member(self, ctx, name):
+        logging.info(f"delete: {ctx.author.name}")
         db = await gen_db()
         db_member = await get_user_by_username(name, db)
         db_member.deleted = True
@@ -191,6 +181,7 @@ class Commands(commands.Cog):
 
     @commands.command(name="undelete")
     async def undelete_member(ctx, name):
+        logging.info(f"undelete: {ctx.author.name}")
         db = await gen_db()
         db_member = await get_user_by_username(name, db)
         db_member.deleted = False

@@ -8,13 +8,14 @@ from app.constants import (GUILD_ID,
                            FORMAT,
                            VOICE_CHANNEL)
 from app.models import User
-from app.custom_funcs import (get_user_by_username,
-                              get_current_hour,
-                              get_date_by_period,
-                              is_tentap,
-                              delete_prev_period_data,
-                              current_period,
-                              )
+from app.custom_funcs import get_user_by_username
+from app.date_funcs import (
+        get_date_by_period,
+        current_period,
+        delete_prev_period_data,
+        is_tentap,
+        get_current_hour
+        )
 
 from app.gen_db import gen_db
 from sqlalchemy.future import select
@@ -86,6 +87,8 @@ async def once_a_day(db, bot):
         # daily resets
         db_member.day_time = 0
         db_member.daily_meme_used = False
+        logging.info(
+                "Daily resets")
         # increment missed days or not
         if not db_member.challange_accepted:
             reason = 1
