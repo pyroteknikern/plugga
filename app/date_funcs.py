@@ -115,7 +115,7 @@ async def check_date_overlap(db, ctx, start_date, end_date):
 async def get_period_info(db) -> str:
     cp = await current_period(db)
     cp_period = await get_date_by_period(db, cp)
-
+    message = ""
     if cp_period is not None:
         cp_period_start = datetime.strptime(cp_period.start_date, FORMAT)
         cp_period_end = datetime.strptime(cp_period.end_date, FORMAT)
