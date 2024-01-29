@@ -109,7 +109,7 @@ class Commands(commands.Cog):
         await db.close()
 
     @commands.command(name="motivate-me")
-    async def MotivateIShall(self, ctx):
+    async def motivate_me(self, ctx):
         logging.info(f"motivate-me: {ctx.author.name}")
         num = random.randint(0, 3)
 
@@ -138,7 +138,8 @@ class Commands(commands.Cog):
 
         if today >= cp_middle_date:
             await db.close()
-            await ctx.send('You are too late to join the current period, sorry!')
+            await ctx.send('You are too late to join the current'
+                           'period, sorry!')
             return
 
         if db_member.period_failed != 0:
