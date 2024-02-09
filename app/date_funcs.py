@@ -132,11 +132,8 @@ async def get_period_info(db) -> str:
                    "\n*The above content may not be accurate, "
                    "make sure to keep track on your own calander!*\n")
     else:
-        np = await next_period(db)
-
-        if np is False:
-            message = ("**No active period for the moment, "
-                       "please stand by (maybe relax) until next period!**")
+        message = ("**No active period for the moment, "
+                   "please stand by (maybe relax) until next period!**")
 
     return message
 

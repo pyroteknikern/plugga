@@ -18,6 +18,7 @@ class Bot(commands.Bot):
     async def setup_hook(self):
         await self.load_extension("cogs.loops")
         await self.load_extension("cogs.user_commands")
+        await self.load_extension("cogs.music")
 
 
 Bot().run(token)

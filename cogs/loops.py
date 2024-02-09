@@ -116,7 +116,7 @@ async def once_a_day(db, bot):
         await once_a_week(db)
 
 
-async def once_a_week(db, bot):
+async def once_a_week(db):
     logging.info("once_a_week")
     db_members = (await db.execute(select(User))).scalars().all()
     reason = 0
