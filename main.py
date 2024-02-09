@@ -5,7 +5,7 @@ import os
 
 import logging
 
-os.environ["PATH"] += ":/usr/local/bin"
+os.environ["PATH"] += ":/usr/bin"
 
 logging.basicConfig(filename="plugga_bot.log", level=logging.INFO)
 
