@@ -1,8 +1,11 @@
 import discord
 from discord.ext import commands
 from app.constants import token
+import os
 
 import logging
+
+os.environ["PATH"] += ":/usr/local/bin"
 
 logging.basicConfig(filename="plugga_bot.log", level=logging.INFO)
 
