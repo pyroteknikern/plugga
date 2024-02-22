@@ -104,7 +104,7 @@ class Commands(commands.Cog):
 
         link = get_link()
         await ctx.send(f"This is your daily meme:\n{link}")
-        user.daily_meme_used = True
+        # user.daily_meme_used = True
         await db.commit()
         await db.close()
 
